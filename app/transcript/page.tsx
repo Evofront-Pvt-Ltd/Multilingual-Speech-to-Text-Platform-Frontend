@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import NewRecordingLink from '@/components/NewRecordingLink';
 import { getTranscript } from '@/lib/api';
 import { languageLabel } from '@/lib/languages';
+import { isGarbageTranscript } from '@/lib/transcript-validation';
 import {
   defaultTargetLanguage,
   readLastTranscript,
@@ -104,6 +105,10 @@ function TranscriptContent() {
   }
 
   const legacyDemo = isLegacyDemo(transcript.text, transcript.mode);
+  const garbageTranscript = isGarbageTranscript(
+    transcript.text,
+    transcript.sourceLanguage,
+  );
 
   const goToTranslate = () => {
     saveTranslateSource({
@@ -128,6 +133,13 @@ function TranscriptContent() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+
+      {garbageTranscript && (
+        <div className="alert alert-error">
+          This transcript looks invalid (punctuation only, not real {languageLabel(transcript.sourceLanguage)} text).
+          Make a <Link href="/recorder" className="link-inline">new recording</Link> — speak clearly for 8+ seconds in a quiet room.
+        </div>
+      )}
 
       {legacyDemo && (
         <div className="alert alert-error">

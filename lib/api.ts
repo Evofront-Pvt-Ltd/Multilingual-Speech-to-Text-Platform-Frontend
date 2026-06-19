@@ -1,6 +1,17 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
+export function formatApiError(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return 'Request timed out. If this is the first run, wait for the Whisper model to finish downloading.';
+  }
+  if (error instanceof TypeError && error.message === 'Failed to fetch') {
+    return `Cannot reach VoiceBridge backend at ${API_BASE}. Start the backend first (port 3001) — do not run frontend on port 3001.`;
+  }
+  if (error instanceof Error) return error.message;
+  return 'Something went wrong. Please try again.';
+}
+
 export interface Language {
   code: string;
   name: string;
@@ -31,7 +42,7 @@ export interface TranslateResult {
   text: string;
   sourceLanguage: string;
   targetLanguage: string;
-  mode: 'google' | 'demo' | 'passthrough';
+  mode: 'google' | 'fallback' | 'passthrough';
   transcriptId?: string;
 }
 
@@ -83,13 +94,37 @@ export async function getTranscript(id: string): Promise<Transcript> {
   return res.json();
 }
 
+export async function saveTextTranscript(
+  language: string,
+  text: string,
+): Promise<TranscribeResult> {
+  const res = await fetch(`${API_BASE}/transcribe/save-text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ language, text: text.trim() }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const message = Array.isArray(err.message)
+      ? err.message.join(', ')
+      : err.message;
+    throw new Error(message ?? 'Failed to save transcript');
+  }
+  return res.json();
+}
+
 export async function transcribeAudio(
   audio: Blob,
   language: string,
+  browserText?: string,
 ): Promise<TranscribeResult> {
   const form = new FormData();
   form.append('audio', audio, 'recording.webm');
   form.append('language', language);
+  if (browserText?.trim()) {
+    form.append('browserText', browserText.trim());
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
@@ -111,14 +146,44 @@ export async function transcribeAudio(
     return res.json();
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(
-        'Transcription timed out. The first run downloads the AI model (~150MB) — wait and try again.',
-      );
+      throw new Error(formatApiError(error));
     }
-    throw error;
+    throw new Error(formatApiError(error));
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export interface PreviewResult {
+  text: string;
+  sourceLanguage: string;
+  mode: 'preview';
+}
+
+export async function previewTranscribe(
+  audio: Blob,
+  language: string,
+  signal?: AbortSignal,
+): Promise<PreviewResult> {
+  const form = new FormData();
+  form.append('audio', audio, 'recording.webm');
+  form.append('language', language);
+
+  const res = await fetch(`${API_BASE}/transcribe/preview`, {
+    method: 'POST',
+    body: form,
+    signal,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const message = Array.isArray(err.message)
+      ? err.message.join(', ')
+      : err.message;
+    throw new Error(message ?? 'Live preview failed');
+  }
+
+  return res.json();
 }
 
 export async function translateText(

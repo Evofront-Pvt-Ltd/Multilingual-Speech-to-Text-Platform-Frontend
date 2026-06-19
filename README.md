@@ -1,25 +1,42 @@
 # VoiceBridge AI — Frontend
 
-Enterprise Next.js client for the VoiceBridge AI multilingual speech-to-text and translation platform.
+Next.js client for the VoiceBridge AI multilingual speech-to-text and translation PoC (Phase 1).
 
 ## Pages
 
 | Page | Route | Description |
 |------|-------|-------------|
-| Dashboard | `/` | Platform overview and activity metrics |
-| Voice Recorder | `/recorder` | Capture audio with source language selection |
-| Transcript Viewer | `/transcript` | Review speech-to-text output |
-| Translation | `/translate` | Convert content between languages |
-| History | `/history` | Archive of all transcripts and translations |
+| Dashboard | `/` | Platform status, engine health, quick start |
+| Voice Studio | `/recorder` | Live recording, waveform, real-time transcript preview |
+| Transcript Viewer | `/transcript` | Review neural speech-to-text output |
+| Translation | `/translate` | Manual source/target language translation |
+| History | `/history` | Archive of transcripts and translations |
 
 ## Quick Start (Windows)
 
+**Terminal 1 — Backend (required first):**
+```powershell
+cd "Multilingual-Speech-to-Text-Platform-backend"
+.\start.ps1
+```
+Wait for `Whisper neural engine ready.`
+
+**Terminal 2 — Frontend:**
 ```powershell
 cd "Multilingual-Speech-to-Text-Platform-Frontend"
 .\start.ps1
 ```
 
-Open **http://localhost:3000** (backend must be running on port 3001).
+Open **http://localhost:3000**
+
+## Phase 1 Demo Flow
+
+1. Open **Voice Studio** (`/recorder`)
+2. Select source language (e.g. English, Kannada, Hindi)
+3. Press record — speak for **5+ seconds** — words appear live
+4. Stop — neural engine finalizes transcript
+5. Click **Translate** — pick target language — view translation
+6. Check **History** for stored records
 
 ## Environment Variables
 
@@ -27,11 +44,17 @@ Open **http://localhost:3000** (backend must be running on port 3001).
 |----------|---------|-------------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3001` | Backend API base URL |
 
-## User Flow
+## Browser Support
 
-1. Select source language
-2. Record voice in the browser
-3. Audio is sent to the backend for transcription
-4. Review the generated transcript
-5. Select target language and translate
-6. Access records in History
+- **Chrome / Edge** — recommended (live speech preview + recording)
+- **Firefox** — recording works; live preview may be limited
+- **Safari** — recording works on HTTPS; test before client demo
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| Red error on record | Restart backend with `.\start.ps1` in backend folder |
+| Old demo text in history | Cleared in backend `data/transcripts.json` — record fresh |
+| Sidebar shows "Engine Loading" | Wait 1–2 min for Whisper model on first run |
+| Translation fails | Backend needs internet for Google translate client |

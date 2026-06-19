@@ -6,13 +6,22 @@ import AudioVisualizer from '@/components/AudioVisualizer';
 import EngineStatus from '@/components/EngineStatus';
 import LanguageSelect from '@/components/LanguageSelect';
 import PipelineSteps from '@/components/PipelineSteps';
-import { transcribeAudio } from '@/lib/api';
+import { transcribeAudio, saveTextTranscript, checkHealth, API_BASE } from '@/lib/api';
 import { languageLabel } from '@/lib/languages';
+import { getSupportedAudioMimeType, waitForRecordingBlob } from '@/lib/recorder';
 import {
-  getSupportedAudioMimeType,
-  waitForRecordingBlob,
-} from '@/lib/recorder';
-import { clearRecordingSession, saveLastTranscript } from '@/lib/session';
+  clearRecordingSession,
+  saveLastTranscript,
+  readSourceLanguage,
+  saveSourceLanguage,
+} from '@/lib/session';
+import { mergeLiveCaptures } from '@/lib/merge-live-captures';
+import {
+  canSaveLiveText,
+  filterLiveText,
+  pickLiveDisplayText,
+} from '@/lib/transcript-validation';
+import { useLivePreview } from '@/lib/useLivePreview';
 import { useLiveSpeech } from '@/lib/useLiveSpeech';
 
 export default function RecorderPage() {
@@ -23,107 +32,187 @@ export default function RecorderPage() {
   const [error, setError] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [finalTranscript, setFinalTranscript] = useState<string | null>(null);
+  const [processingMessage, setProcessingMessage] = useState('');
+  const [processingCapture, setProcessingCapture] = useState('');
   const [pipelineStep, setPipelineStep] = useState(1);
-
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
-
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef('audio/webm');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const liveSpeech = useLiveSpeech(sourceLanguage);
+  const getPreviewBlob = useCallback(
+    () =>
+      chunksRef.current.length
+        ? new Blob(chunksRef.current, { type: mimeTypeRef.current })
+        : null,
+    [],
+  );
 
-  const stopTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+  const liveSnapshotRef = useRef('');
+
+  const liveSpeech = useLiveSpeech(sourceLanguage, recording);
+  /** For Indian languages, live preview uses browser speech only (no English neural preview). */
+  const livePreview = useLivePreview(
+    recording && sourceLanguage === 'en',
+    sourceLanguage,
+    getPreviewBlob,
+  );
+
+  useEffect(() => {
+    checkHealth().then((ok) => {
+      setBackendOnline(ok);
+      if (ok) setError(null);
+    });
+    const saved = readSourceLanguage();
+    if (saved) setSourceLanguage(saved);
   }, []);
 
-  useEffect(() => () => stopTimer(), [stopTimer]);
+  useEffect(() => {
+    saveSourceLanguage(sourceLanguage);
+  }, [sourceLanguage]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (recording && duration >= 5 && error?.includes('5 seconds')) {
+      setError(null);
+    }
+  }, [recording, duration, error]);
 
   const startRecording = async () => {
-    setError(null);
-    setFinalTranscript(null);
-    clearRecordingSession();
-    setPipelineStep(2);
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError(
-        'Microphone recording is not supported. Use Chrome or Edge on localhost.',
-      );
-      setPipelineStep(1);
+    if (!(await checkHealth())) {
+      setError(`Backend not running at ${API_BASE}. Run backend .\\start.ps1 first.`);
       return;
     }
+
+    setError(null);
+    setFinalTranscript(null);
+    setProcessingCapture('');
+    setProcessingMessage('');
+    clearRecordingSession();
+    livePreview.reset();
+    liveSpeech.reset();
+    setPipelineStep(2);
 
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setStream(mediaStream);
-
       const mimeType = getSupportedAudioMimeType();
+      mimeTypeRef.current = mimeType ?? 'audio/webm';
       const mediaRecorder = mimeType
         ? new MediaRecorder(mediaStream, { mimeType })
         : new MediaRecorder(mediaStream);
-
       chunksRef.current = [];
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start(250);
       setRecording(true);
       setDuration(0);
       timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
-
       liveSpeech.start();
     } catch {
-      setError('Microphone access is required. Enable permissions and try again.');
+      setError('Microphone access is required. Use Chrome or Edge.');
       setPipelineStep(1);
     }
   };
+
+  const currentLiveText = pickLiveDisplayText(
+    liveSpeech.displayText,
+    livePreview.text,
+    sourceLanguage,
+  );
+
+  useEffect(() => {
+    if (currentLiveText) liveSnapshotRef.current = currentLiveText;
+  }, [currentLiveText]);
 
   const stopRecording = async () => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || !stream || recorder.state === 'inactive') return;
 
-    liveSpeech.stop();
-    setRecording(false);
-    stopTimer();
-    setProcessing(true);
-    setPipelineStep(3);
-
-    try {
-      const blob = await waitForRecordingBlob(
-        recorder,
-        stream,
-        chunksRef.current,
-      );
-      mediaRecorderRef.current = null;
-      setStream(null);
-      chunksRef.current = [];
-      await submitRecording(blob);
-    } catch (err) {
-      setProcessing(false);
-      setPipelineStep(2);
-      setError(
-        err instanceof Error ? err.message : 'Failed to finalize recording',
-      );
-    }
-  };
-
-  const submitRecording = async (blob: Blob) => {
-    if (blob.size < 100) {
-      setProcessing(false);
-      setPipelineStep(2);
-      setError('Recording is too short. Speak for at least 3 seconds.');
+    if (duration < 5) {
+      setError('Speak at least 5 seconds, then press stop.');
       return;
     }
 
-    setError(null);
+    const preStopSnapshot = mergeLiveCaptures(
+      liveSnapshotRef.current,
+      liveSpeech.getDisplayText(),
+      currentLiveText,
+      liveSpeech.getCapturedText(),
+    );
+    if (preStopSnapshot) {
+      setProcessingCapture(preStopSnapshot);
+    }
+
+    const browserCapturePromise = liveSpeech.flushAndCapture();
+    setRecording(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    setProcessing(true);
+    setProcessingMessage('Saving transcript…');
+    setPipelineStep(3);
+
+    const cleanupRecorder = async () => {
+      try {
+        await waitForRecordingBlob(recorder, stream, chunksRef.current);
+      } finally {
+        mediaRecorderRef.current = null;
+        stream.getTracks().forEach((track) => track.stop());
+        setStream(null);
+        chunksRef.current = [];
+      }
+    };
 
     try {
-      const result = await transcribeAudio(blob, sourceLanguage);
+      const flushed = await browserCapturePromise;
+      const liveCapture = mergeLiveCaptures(
+        preStopSnapshot,
+        flushed,
+        liveSpeech.getDisplayText(),
+        liveSpeech.getCapturedText(),
+        livePreview.getCapturedText(),
+      );
+
+      if (liveCapture) {
+        setProcessingCapture(liveCapture);
+        liveSnapshotRef.current = liveCapture;
+      }
+
+      if (!liveCapture.trim()) {
+        await cleanupRecorder();
+        setProcessing(false);
+        setPipelineStep(2);
+        setError('No speech captured. Speak clearly in Chrome/Edge, then stop.');
+        return;
+      }
+
+      if (canSaveLiveText(liveCapture, sourceLanguage)) {
+        const result = await saveTextTranscript(sourceLanguage, liveCapture);
+        void cleanupRecorder();
+        saveLastTranscript(result);
+        setFinalTranscript(result.text);
+        setPipelineStep(4);
+        router.push(`/transcript?id=${result.id}`);
+        return;
+      }
+
+      setProcessingMessage('Transcribing audio…');
+      const blob = await waitForRecordingBlob(recorder, stream, chunksRef.current);
+      mediaRecorderRef.current = null;
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+      chunksRef.current = [];
+
+      const result = await transcribeAudio(blob, sourceLanguage, liveCapture);
       saveLastTranscript(result);
       setFinalTranscript(result.text);
       setPipelineStep(4);
@@ -133,17 +222,21 @@ export default function RecorderPage() {
       setError(err instanceof Error ? err.message : 'Transcription failed');
     } finally {
       setProcessing(false);
+      setProcessingMessage('');
     }
   };
 
-  const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
+  const liveText =
+    finalTranscript ??
+    (processing && processingCapture
+      ? filterLiveText(processingCapture, sourceLanguage) || processingCapture
+      : currentLiveText);
 
-  const liveText = finalTranscript ?? liveSpeech.displayText;
-  const showLivePanel = recording || processing || Boolean(liveText);
+  const livePlaceholder = recording
+    ? sourceLanguage === 'en'
+      ? 'Listening…'
+      : `Speak in ${languageLabel(sourceLanguage)}…`
+    : processingMessage || 'Processing…';
 
   return (
     <div className="studio-page">
@@ -152,98 +245,56 @@ export default function RecorderPage() {
           <p className="studio-eyebrow">Voice Intelligence Studio</p>
           <h2 className="studio-title">Real-Time Speech Capture</h2>
           <p className="studio-subtitle">
-            Speak in {languageLabel(sourceLanguage)} — words appear live as you talk,
-            then our neural engine produces the final transcript.
+            Speak in {languageLabel(sourceLanguage)} — live text appears in the same
+            language, then the final transcript is saved.
           </p>
         </div>
         <EngineStatus />
       </div>
 
       <PipelineSteps currentStep={pipelineStep} />
-
       {error && <div className="alert alert-error">{error}</div>}
+
+      {sourceLanguage !== 'en' && !recording && !processing && (
+        <div className="alert alert-info">
+          Select your language, record 8+ seconds in Chrome/Edge, then stop. Live text
+          appears in the same language (Telugu, Kannada, Hindi, etc.).
+        </div>
+      )}
 
       <div className="studio-grid">
         <div className="card studio-card">
           <LanguageSelect
-            label="Source Language"
+            label="Source Language (must match how you speak)"
             value={sourceLanguage}
-            onChange={(code) => {
-              setSourceLanguage(code);
-              if (!recording && !processing) setPipelineStep(1);
-            }}
+            onChange={setSourceLanguage}
             disabled={recording || processing}
           />
-
           <AudioVisualizer stream={stream} active={recording} />
-
           <div className="recorder-controls studio-recorder">
             <button
               className={`record-btn ${recording ? 'recording' : ''}`}
               onClick={recording ? stopRecording : startRecording}
               disabled={processing}
-              aria-label={recording ? 'Stop recording' : 'Start recording'}
             >
               <div className="record-dot" />
             </button>
-
-            <div className="recorder-meta">
-              <p className="recorder-status">
-                {processing
-                  ? 'Neural engine transcribing your recording…'
-                  : recording
-                    ? `Live capture ${formatDuration(duration)}`
-                    : 'Press to start live recording'}
-              </p>
-              <div className="recorder-badges">
-                {recording && (
-                  <span className="status-badge live-badge">
-                    <span className="live-pulse" /> LIVE
-                  </span>
-                )}
-                {processing && (
-                  <span className="status-badge status-info">Processing</span>
-                )}
-                {!recording && !processing && liveSpeech.supported && (
-                  <span className="status-badge status-ok">Real-time ready</span>
-                )}
-              </div>
-            </div>
+            <p className="recorder-status">
+              {processing
+                ? processingMessage || 'Transcribing…'
+                : recording
+                  ? `Recording ${duration}s`
+                  : 'Press to record'}
+            </p>
           </div>
         </div>
 
         <div className="card studio-card live-panel">
-          <div className="live-panel-header">
-            <h3 className="card-title">Live Transcript</h3>
-            {recording && liveSpeech.supported && (
-              <span className="status-badge status-ok">Streaming</span>
+          <h3 className="card-title">Live Transcript</h3>
+          <div className="live-transcript">
+            {liveText || (
+              <span className="live-placeholder">{livePlaceholder}</span>
             )}
-          </div>
-
-          {showLivePanel ? (
-            <div className={`live-transcript ${recording ? 'typing' : ''}`}>
-              {liveText || (
-                <span className="live-placeholder">
-                  {recording
-                    ? 'Start speaking — your words will appear here in real time…'
-                    : 'Processing with neural speech engine…'}
-                </span>
-              )}
-              {recording && liveText && <span className="live-cursor" />}
-            </div>
-          ) : (
-            <div className="live-transcript empty">
-              <span className="live-placeholder">
-                Your speech appears here instantly while you record. After you stop,
-                the neural engine refines the final transcript.
-              </span>
-            </div>
-          )}
-
-          <div className="studio-features">
-            <div className="feature-chip">Live preview</div>
-            <div className="feature-chip">Whisper AI</div>
-            <div className="feature-chip">10 languages</div>
           </div>
         </div>
       </div>

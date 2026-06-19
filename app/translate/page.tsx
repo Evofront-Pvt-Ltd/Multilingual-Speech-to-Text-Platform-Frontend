@@ -23,8 +23,8 @@ interface TranslateSource {
 
 function modeLabel(mode: TranslateResult['mode']) {
   if (mode === 'google') return 'Live Translation';
-  if (mode === 'passthrough') return 'Same Language';
-  return 'Standard';
+  if (mode === 'fallback') return 'Backup Engine';
+  return 'Same Language';
 }
 
 function TranslateContent() {

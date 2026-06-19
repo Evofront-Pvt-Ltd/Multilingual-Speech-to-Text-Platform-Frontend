@@ -3,6 +3,7 @@ import type { TranscribeResult } from './api';
 export const SESSION_KEYS = {
   lastTranscript: 'voicebridge:lastTranscript',
   translateSource: 'voicebridge:translateSource',
+  sourceLanguage: 'voicebridge:sourceLanguage',
 } as const;
 
 export function saveLastTranscript(result: TranscribeResult): void {
@@ -55,4 +56,12 @@ export function readTranslateSource(): {
 
 export function defaultTargetLanguage(sourceCode: string): string {
   return sourceCode === 'en' ? 'hi' : 'en';
+}
+
+export function saveSourceLanguage(code: string): void {
+  localStorage.setItem(SESSION_KEYS.sourceLanguage, code);
+}
+
+export function readSourceLanguage(): string | null {
+  return localStorage.getItem(SESSION_KEYS.sourceLanguage);
 }
