@@ -79,14 +79,14 @@ export default function DashboardPage() {
         <div className="card studio-card">
           <h3 className="card-title">Quick Start</h3>
           <ol className="steps-list">
-            <li>Open <Link href="/recorder" className="link-inline">Voice Studio</Link> and pick your language</li>
-            <li>Speak — watch words appear live in real time</li>
-            <li>Stop recording — neural engine finalizes the transcript</li>
-            <li>Translate to any supported language instantly</li>
+            <li>Open <Link href="/recorder" className="link-inline">Voice Recorder</Link> and select the language you will speak</li>
+            <li>Record — speak clearly for at least 5 seconds</li>
+            <li>View your transcript in <Link href="/transcript" className="link-inline">Transcript Viewer</Link></li>
+            <li>Open <Link href="/translate" className="link-inline">Translation</Link> and select the target language</li>
           </ol>
           <div className="actions-row">
             <Link href="/recorder" className="btn btn-primary btn-lg">
-              Open Voice Studio
+              Start Recording
             </Link>
           </div>
         </div>

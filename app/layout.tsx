@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
 import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
-import Sidebar from '@/components/Sidebar';
-import SupportChatWidget from '@/components/SupportChatWidget';
 import './globals.css';
 
 const inter = Inter({
@@ -29,13 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${jakarta.variable}`}>
-      <body>
-        <div className="app-shell">
-          <Sidebar />
-          <main className="main-content">{children}</main>
-          <SupportChatWidget />
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

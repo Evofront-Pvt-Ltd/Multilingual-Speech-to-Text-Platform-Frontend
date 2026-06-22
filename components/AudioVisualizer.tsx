@@ -5,9 +5,14 @@ import { useEffect, useRef } from 'react';
 interface AudioVisualizerProps {
   stream: MediaStream | null;
   active: boolean;
+  compact?: boolean;
 }
 
-export default function AudioVisualizer({ stream, active }: AudioVisualizerProps) {
+export default function AudioVisualizer({
+  stream,
+  active,
+  compact = false,
+}: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
 
@@ -58,8 +63,13 @@ export default function AudioVisualizer({ stream, active }: AudioVisualizerProps
   }, [stream, active]);
 
   return (
-    <div className="visualizer-wrap">
-      <canvas ref={canvasRef} className="visualizer-canvas" width={640} height={80} />
+    <div className={`visualizer-wrap ${compact ? 'visualizer-compact' : ''}`}>
+      <canvas
+        ref={canvasRef}
+        className="visualizer-canvas"
+        width={640}
+        height={compact ? 48 : 80}
+      />
       {!active && <div className="visualizer-idle">Waveform activates when recording</div>}
     </div>
   );

@@ -41,7 +41,7 @@ export function waitForRecordingBlob(
           const mimeType =
             recorder.mimeType || getSupportedAudioMimeType() || 'audio/webm';
           resolve(new Blob(collected, { type: mimeType }));
-        }, 250);
+        }, 500);
       },
       { once: true },
     );

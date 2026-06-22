@@ -1,12 +1,17 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import LanguageSelect from '@/components/LanguageSelect';
 import NewRecordingLink from '@/components/NewRecordingLink';
 import PageHeader from '@/components/PageHeader';
-import { getTranscript, translateText, type TranslateResult } from '@/lib/api';
+import {
+  BACKEND_UNREACHABLE_MESSAGE,
+  getTranscript,
+  translateText,
+  type TranslateResult,
+} from '@/lib/api';
 import { languageLabel } from '@/lib/languages';
 import {
   defaultTargetLanguage,
@@ -14,6 +19,7 @@ import {
   readTranslateSource,
   saveTranslateSource,
 } from '@/lib/session';
+import { useBackendHealth } from '@/lib/useBackendHealth';
 
 interface TranslateSource {
   id?: string;
@@ -30,6 +36,8 @@ function modeLabel(mode: TranslateResult['mode']) {
 function TranslateContent() {
   const searchParams = useSearchParams();
   const transcriptId = searchParams.get('id');
+  const autoTranslate = searchParams.get('auto') === '1';
+  const { online, checking } = useBackendHealth();
 
   const [source, setSource] = useState<TranslateSource>({
     text: '',
@@ -40,6 +48,41 @@ function TranslateContent() {
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const translateInFlight = useRef(false);
+  const autoTranslateAttempted = useRef(false);
+
+  const handleTranslate = useCallback(async () => {
+    if (!source.text.trim()) {
+      setError('No transcript text to translate. Record audio or paste text first.');
+      return;
+    }
+
+    if (!online) {
+      setError(BACKEND_UNREACHABLE_MESSAGE);
+      return;
+    }
+
+    if (translateInFlight.current) return;
+    translateInFlight.current = true;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await translateText(
+        source.text,
+        source.sourceLanguage,
+        targetLanguage,
+        source.id?.startsWith('live-') ? undefined : source.id,
+      );
+      setResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Translation failed');
+    } finally {
+      translateInFlight.current = false;
+      setLoading(false);
+    }
+  }, [online, source, targetLanguage]);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +91,31 @@ function TranslateContent() {
       setInitializing(true);
       setError(null);
 
-      if (transcriptId) {
+      const loadFromSession = () => {
+        const fromTranslate = readTranslateSource();
+        if (fromTranslate?.text.trim()) {
+          setSource(fromTranslate);
+          setTargetLanguage(defaultTargetLanguage(fromTranslate.sourceLanguage));
+          return true;
+        }
+
+        const fromRecording = readLastTranscript();
+        if (fromRecording?.text.trim()) {
+          const nextSource = {
+            id: fromRecording.id,
+            text: fromRecording.text,
+            sourceLanguage: fromRecording.sourceLanguage,
+          };
+          setSource(nextSource);
+          setTargetLanguage(defaultTargetLanguage(fromRecording.sourceLanguage));
+          saveTranslateSource(nextSource);
+          return true;
+        }
+
+        return false;
+      };
+
+      if (transcriptId && !transcriptId.startsWith('live-')) {
         try {
           const record = await getTranscript(transcriptId);
           if (cancelled) return;
@@ -73,29 +140,11 @@ function TranslateContent() {
           return;
         } catch {
           if (cancelled) return;
+          if (loadFromSession()) return;
           setError('Could not load transcript for translation.');
         }
-      }
-
-      const fromTranslate = readTranslateSource();
-      if (fromTranslate?.text.trim()) {
-        if (cancelled) return;
-        setSource(fromTranslate);
-        setTargetLanguage(defaultTargetLanguage(fromTranslate.sourceLanguage));
-        return;
-      }
-
-      const fromRecording = readLastTranscript();
-      if (fromRecording?.text.trim()) {
-        if (cancelled) return;
-        const nextSource = {
-          id: fromRecording.id,
-          text: fromRecording.text,
-          sourceLanguage: fromRecording.sourceLanguage,
-        };
-        setSource(nextSource);
-        setTargetLanguage(defaultTargetLanguage(fromRecording.sourceLanguage));
-        saveTranslateSource(nextSource);
+      } else if (loadFromSession()) {
+        // Session-backed source (including live-preview transcripts).
       }
     }
 
@@ -108,39 +157,58 @@ function TranslateContent() {
     };
   }, [transcriptId]);
 
-  const handleTranslate = async () => {
-    if (!source.text.trim()) {
-      setError('No transcript text to translate. Record audio or paste text first.');
+  useEffect(() => {
+    if (
+      !autoTranslate ||
+      initializing ||
+      checking ||
+      !online ||
+      !source.text.trim() ||
+      loading ||
+      result
+    ) {
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    if (autoTranslateAttempted.current) return;
+    autoTranslateAttempted.current = true;
+    void handleTranslate();
+  }, [
+    autoTranslate,
+    initializing,
+    checking,
+    online,
+    source.text,
+    loading,
+    result,
+    handleTranslate,
+  ]);
 
-    try {
-      const res = await translateText(
-        source.text,
-        source.sourceLanguage,
-        targetLanguage,
-        source.id,
-      );
-      setResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Translation failed');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!autoTranslate || result || loading) return;
+    if (online && error === BACKEND_UNREACHABLE_MESSAGE) {
+      autoTranslateAttempted.current = false;
+      setError(null);
     }
-  };
+  }, [autoTranslate, online, error, result, loading]);
 
   return (
     <>
       <PageHeader
         title="Translation"
-        description="Convert transcripts between supported languages with precision target language selection."
+        description="Review your transcript, then select the target language and translate."
       />
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {!checking && !online && (
+        <div className="alert alert-error">
+          {BACKEND_UNREACHABLE_MESSAGE}
+          {autoTranslate && source.text.trim() && !result && (
+            <span> Translation will start automatically when the backend is online.</span>
+          )}
+        </div>
+      )}
+
+      {error && online && <div className="alert alert-error">{error}</div>}
 
       {initializing ? (
         <div className="card empty-state">
@@ -179,9 +247,9 @@ function TranslateContent() {
             <button
               className="btn btn-primary btn-lg"
               onClick={handleTranslate}
-              disabled={loading || !source.text.trim()}
+              disabled={loading || !source.text.trim() || !online}
             >
-              {loading ? 'Translating…' : 'Translate'}
+              {loading ? 'Translating…' : !online ? 'Backend offline' : 'Translate'}
             </button>
           </div>
 
@@ -191,9 +259,11 @@ function TranslateContent() {
             {!result && !loading && (
               <div className="empty-state">
                 <p>
-                  {source.text.trim()
-                    ? 'Select a target language and click Translate.'
-                    : 'Record audio first, then open this panel to translate your transcript.'}
+                  {!online
+                    ? 'Waiting for the VoiceBridge API. Start the backend, then translation will proceed.'
+                    : source.text.trim()
+                      ? 'Select a target language and click Translate.'
+                      : 'Record audio first, then open this panel to translate your transcript.'}
                 </p>
               </div>
             )}

@@ -6,7 +6,7 @@ import LanguageSelect from '@/components/LanguageSelect';
 import NewRecordingLink from '@/components/NewRecordingLink';
 import PageHeader from '@/components/PageHeader';
 import { formatDate, languageLabel } from '@/lib/languages';
-import { getTranscripts, translateTranscript, type Transcript } from '@/lib/api';
+import { BACKEND_UNREACHABLE_MESSAGE, getTranscripts, translateTranscript, type Transcript } from '@/lib/api';
 
 export default function HistoryPage() {
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
@@ -21,7 +21,7 @@ export default function HistoryPage() {
       const items = await getTranscripts();
       setTranscripts(items);
     } catch {
-      setError('Unable to reach the VoiceBridge API. Ensure the backend is running on port 3001.');
+      setError(BACKEND_UNREACHABLE_MESSAGE);
     } finally {
       setLoading(false);
     }

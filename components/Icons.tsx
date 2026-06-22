@@ -64,6 +64,18 @@ export function IconChat({ className }: IconProps) {
   );
 }
 
+export function IconPlugin({ className }: IconProps) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22v-5" />
+      <path d="M9 8V2" />
+      <path d="M15 8V2" />
+      <path d="M12 17a5 5 0 0 0 5-5V8h-3a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h3" />
+      <path d="M7 17a5 5 0 0 1 5-5V8H9a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
 export function IconLogo({ className }: IconProps) {
   return (
     <svg className={className} width="28" height="28" viewBox="0 0 32 32" fill="none">

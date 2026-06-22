@@ -8,10 +8,10 @@ import { getTranscript } from '@/lib/api';
 import { languageLabel } from '@/lib/languages';
 import { isGarbageTranscript } from '@/lib/transcript-validation';
 import {
-  defaultTargetLanguage,
   readLastTranscript,
   saveTranslateSource,
 } from '@/lib/session';
+import { isLowQualityTranscript } from '@/lib/transcript-quality';
 import type { TranscribeResult } from '@/lib/api';
 
 const LEGACY_DEMO_SNIPPETS = [
@@ -109,6 +109,7 @@ function TranscriptContent() {
     transcript.text,
     transcript.sourceLanguage,
   );
+  const lowQuality = isLowQualityTranscript(transcript.text);
 
   const goToTranslate = () => {
     saveTranslateSource({
@@ -127,6 +128,7 @@ function TranscriptContent() {
           <h2 className="studio-title">Your Speech — Converted to Text</h2>
           <p className="studio-subtitle">
             Neural engine output in {languageLabel(transcript.sourceLanguage)}.
+            Continue to Translation to choose your target language.
           </p>
         </div>
         <span className="status-badge status-ok">Neural Engine</span>
@@ -148,6 +150,15 @@ function TranscriptContent() {
         </div>
       )}
 
+      {lowQuality && !legacyDemo && (
+        <div className="alert alert-error">
+          This transcript looks unreliable (dots or noise instead of real words). Translation
+          cannot fix a bad recording — please make a{' '}
+          <Link href="/recorder" className="link-inline">new recording</Link> with the correct
+          source language selected, speak clearly for at least 5 seconds, and use Chrome or Edge.
+        </div>
+      )}
+
       <div className="card studio-card transcript-result">
         <div className="history-meta">
           <span>{languageLabel(transcript.sourceLanguage)}</span>
@@ -158,8 +169,12 @@ function TranscriptContent() {
         <div className="transcript-box premium">{transcript.text}</div>
 
         <div className="actions-row">
-          <button className="btn btn-primary btn-lg" onClick={goToTranslate}>
-            Translate → {languageLabel(defaultTargetLanguage(transcript.sourceLanguage))}
+          <button
+            className="btn btn-primary btn-lg"
+            onClick={goToTranslate}
+            disabled={lowQuality}
+          >
+            Continue to Translation →
           </button>
           <Link href="/history" className="btn btn-outline">
             History

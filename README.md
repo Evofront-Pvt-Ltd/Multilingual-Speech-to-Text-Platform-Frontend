@@ -9,19 +9,26 @@ Next.js client for the VoiceBridge AI multilingual speech-to-text and translatio
 | Dashboard | `/` | Platform status, engine health, quick start |
 | Voice Studio | `/recorder` | Live recording, waveform, real-time transcript preview |
 | Transcript Viewer | `/transcript` | Review neural speech-to-text output |
-| Translation | `/translate` | Manual source/target language translation |
+| Translation | `/translate` | Select target language and translate transcript |
 | History | `/history` | Archive of transcripts and translations |
 
 ## Quick Start (Windows)
 
-**Terminal 1 — Backend (required first):**
+**Option A — start both (recommended):**
+```powershell
+cd "Multilingual-Speech-to-Text-Platform-Frontend"
+.\start-all.ps1
+```
+
+**Option B — two terminals:**
+
+Backend (port 3001):
 ```powershell
 cd "Multilingual-Speech-to-Text-Platform-backend"
 .\start.ps1
 ```
-Wait for `Whisper neural engine ready.`
 
-**Terminal 2 — Frontend:**
+Frontend (port 3000):
 ```powershell
 cd "Multilingual-Speech-to-Text-Platform-Frontend"
 .\start.ps1

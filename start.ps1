@@ -40,7 +40,7 @@ Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host " VoiceBridge Frontend -> http://localhost:$port" -ForegroundColor Cyan
 Write-Host " Backend API must run on http://localhost:3001" -ForegroundColor Yellow
-Write-Host " Start backend first: ..\Multilingual-Speech-to-Text-Platform-backend\start.ps1" -ForegroundColor Yellow
+Write-Host " Tip: run .\start-all.ps1 to start backend + frontend" -ForegroundColor DarkGray
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
