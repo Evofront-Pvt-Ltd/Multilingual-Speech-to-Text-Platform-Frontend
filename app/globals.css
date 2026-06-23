@@ -1099,9 +1099,7 @@ textarea {
 
 /* Voice widget (embed) */
 
-}
-
-/* GöÇGöÇ Floating voice recorder widget (Type 2 GÇö embeddable plugin) GöÇGöÇ */
+/* Gï¿½ï¿½Gï¿½ï¿½ Floating voice recorder widget (Type 2 Gï¿½ï¿½ embeddable plugin) Gï¿½ï¿½Gï¿½ï¿½ */
 .voice-widget-root {
   position: fixed;
   bottom: 1.5rem;
@@ -1302,7 +1300,7 @@ textarea {
   }
 }
 
-/* GöÇGöÇ Integrations / widget plugin docs GöÇGöÇ */
+/* Gï¿½ï¿½Gï¿½ï¿½ Integrations / widget plugin docs Gï¿½ï¿½Gï¿½ï¿½ */
 .integrations-grid {
   margin-bottom: 1.25rem;
 }

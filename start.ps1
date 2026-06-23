@@ -11,6 +11,17 @@ if (-not (Test-Path "$nodeDir\node.exe")) {
 }
 
 $env:PATH = "$nodeDir;$yarnDir;" + $env:PATH
+
+# Keep yarn/npm/temp on D: when C: is low on space (project lives on D:\Speech)
+$cacheRoot = Join-Path (Split-Path $PSScriptRoot -Parent) ".cache"
+$env:YARN_CACHE_FOLDER = Join-Path $cacheRoot "yarn"
+$env:npm_config_cache = Join-Path $cacheRoot "npm"
+$env:TEMP = Join-Path $cacheRoot "tmp"
+$env:TMP = $env:TEMP
+foreach ($dir in @($env:YARN_CACHE_FOLDER, $env:npm_config_cache, $env:TEMP)) {
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+}
+
 Set-Location $PSScriptRoot
 
 # Free port 3000 if occupied (prevents Next.js from jumping to 3001 and blocking the API)
